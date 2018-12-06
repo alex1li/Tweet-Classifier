@@ -4,28 +4,27 @@ Primary module for the CS 4780 final project
 This module contains the classifier to determine if tweets are from Trump's
 Android phone, or one of his advisors' iPhones
 
-# Alexander Li (afl59), Rohan Patel (rp442)
-# 11/14/18
+Alexander Li (afl59), Rohan Patel (rp442)
+11/14/18
 
-# https://www.tensorflow.org/tutorials/keras/basic_text_classification
 """
 
 import numpy as np
-#import tensorflow as tf
 import csv
 from sklearn.ensemble import RandomForestClassifier
 from sklearn import svm
+import re
 
+BAGSIZE = 1000
 
-tweets = []
-length = []
-time = []
-
-
-data = csv.DictReader(open('train.csv'))
-test = csv.DictReader(open('test.csv'))
+data = csv.DictReader(open('train.csv')) #training data
+test = csv.DictReader(open('test.csv')) #test submission data
 
 def prepareSubmit(pred):
+    """
+    Writes the test predictions to a CSV for submission
+    Parameter pred: list of classifications for the test data.
+    """
     with open('submit.csv', mode='w') as submit:
         writer = csv.writer(submit, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(['ID', 'Label'])
@@ -35,15 +34,26 @@ def prepareSubmit(pred):
             writer.writerow([str(i), str(label)])
 
 def hashfeatures(tweet):
-    v = np.zeros(1000)
+    """
+    Creates a bag of words representation of the Tweets. Cleans up the tweet
+    to all lower case words only, and then hashes them to a feature vector.
+    Parameter tweet: string of the tweet to hash
+    """
+    v = np.zeros(BAGSIZE)
+    tweet = re.sub(r'([^\s\w]|_)+', '', tweet)
+    tweet = tweet.lower()
     tweetlist = tweet.split()
     for s in tweetlist:
-        index = hash(s)%1
+        index = hash(s)%BAGSIZE
         #orig = v[index]
-        v[index] = 1000
+        v[index] = 1
     return v
 
 def extractLabels(data):
+    """
+    Creates the labels used for training the models
+    Parameter data: dictionary of data from CSV
+    """
     labels = []
     for d in data:
         print('did')
@@ -53,6 +63,13 @@ def extractLabels(data):
     return labels
 
 def extractFeatures(data,test=False):
+    """
+    Extracts features for the feature vector used to train the models.
+    Creates a bag of words, and adds features for special characters and
+    words of interest.
+    Parameter data: dictionary of data from CSV
+    Parameter test: boolean to distinguish if this is for training or testing
+    """
     xTr = []
     yTr = []
     for d in data:
@@ -97,8 +114,8 @@ def extractFeatures(data,test=False):
         morning = (hour < 7)*1
         tweethash = hashfeatures(tweet)
 
-        retweetLarge = (int(d['retweetCount'])>40000)*1
-        favoriteLarge = (int(d['favoriteCount'])>10000)*1
+        retweetLarge = (int(d['retweetCount'])>10000)*1
+        favoriteLarge = (int(d['favoriteCount'])>30000)*1
 
         data=np.append(tweethash,size)
         data = np.append(data,evening)
@@ -120,73 +137,46 @@ def extractFeatures(data,test=False):
     else:
         return xTr,yTr
 
+def train(xTr, yTr):
+    """
+    Trains a Random Forest Model on our data
+    Parameter xTr: training data
+    Parameter yTr: training labels
+    """
+    forest = RandomForestClassifier(n_estimators=1000, max_depth=None,random_state=0, oob_score=True)
+    forest.fit(trainxTr, trainyTr)
+    return forest
+
+# Generate training data and labels
 xTr,yTr = extractFeatures(data)
 xTe = extractFeatures(test, True)
 
-xTr = np.array(xTr)
-yTr = np.array(yTr)
 
+
+# Split data into validation and testing
 n = len(xTr)
-
 trainxTr = xTr[:int(n*.8)]
-validxTr=xTr[int(n*.8):]
-
 trainyTr = yTr[:int(n*.8)]
-validyTr=yTr[int(n*.8):]
+validxTr = xTr[int(n*.8):]
+validyTr = yTr[int(n*.8):]
 
-forest = RandomForestClassifier(n_estimators=1000, max_depth=None,random_state=0, oob_score=True)
-forest.fit(trainxTr, trainyTr)
+# Create model and test the model
+forest = train(trainxTr, trainyTr)
+predValid = forest.predict(validxTr)
+predTrain = forest.predict(trainxTr)
 
-pred = forest.predict(validxTr)
 print('forest')
-print('validation score ' + str(1-sum(validyTr!=pred)/len(validyTr)))
+print('validation score ' + str(1-sum(validyTr!=predValid)/len(validyTr)))
 
-pred = forest.predict(trainxTr)
-#<GRADED>
-print('train score ' + str(1-sum(trainyTr!=pred)/len(trainyTr)))
+print('train score ' + str(1-sum(trainyTr!=predTrain)/len(trainyTr)))
 print('oob score' + str(forest.oob_score_))
 
 
-forest2 = RandomForestClassifier(n_estimators=1000, max_depth=None,random_state=0, oob_score=True)
-forest2.fit(xTr, yTr)
-
+# Final model for submission
+forest2 = train(xTr,yTr)
 pred = forest2.predict(xTe)
 
 prepareSubmit(pred)
 
 print('final')
 print('test oob score' + str(forest.oob_score_))
-
-
-
-# support = svm.SVC(kernel='rbf')
-# support.fit(trainxTr,trainyTr)
-#
-#
-#
-# pred = support.predict(validxTr)
-# print('svm')
-# pred = support.predict(validxTr)
-# print(sum(validyTr!=pred)/len(validyTr))
-# pred = support.predict(trainxTr)
-# print(sum(trainyTr!=pred)/len(trainyTr))
-
-
-# def name2features2(filename, B=128, LoadFile=True):
-#     """
-#     Output:
-#     X : n feature vectors of dimension B, (nxB)
-#     """
-#     # read in baby names
-#     if LoadFile:
-#         with open(filename, 'r') as f:
-#             babynames = [x.rstrip() for x in f.readlines() if len(x) > 0]
-#     else:
-#         babynames = filename.split('\n')
-#     n = len(babynames)
-#     X = np.zeros((n, B))
-#     for i in range(n):
-#         X[i,:] = hashfeatures(babynames[i], B)
-#     return X
-
-#</GRADED>
